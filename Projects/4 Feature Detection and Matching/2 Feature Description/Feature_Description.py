@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 # coding: utf-8
 
-# In[267]:
+# In[722]:
 
 
 # Set Up
@@ -10,21 +10,23 @@ import cv2 as cv
 from matplotlib import pyplot as plt
 
 
-# In[409]:
+# In[723]:
 
 
 # Helper Functions for displaying image and scaling
 
 def scale_img(img, scale_percent):
-    print("\nscale_img()")
-    print(img.shape)
-    # Scale down image
-    width = int(img.shape[1] * scale_percent / 100)
+    #print("\nscale_img()")
+    #print(img.shape)
+    
+    # Scaled Image Dimensions
+    width  = int(img.shape[1] * scale_percent / 100)
     height = int(img.shape[0] * scale_percent / 100)
     dim = (width, height)
+    
     # resize image
     img = cv.resize(img, dim, interpolation = cv.INTER_AREA)
-    print(img.shape)
+    #print(img.shape)
     return img
 
 # show grayscale image
@@ -32,17 +34,21 @@ def show_grayscale( my_image ):
     plt.figure(figsize = (10,10))
     plt.imshow(my_image, cmap = plt.get_cmap(name = 'gray'))
     plt.show()
-    
+
+# horizontally concatenate 2 images
 def concat_horiz(img1, img2):
-    vis = np.concatenate((img1, img2), axis=1)
+    try:
+        vis = np.concatenate((img1, img2), axis=1)
+    except:
+        vis = np.concatenate((img1, img2))
     show_grayscale(vis)
     return vis
 
 
-# In[400]:
+# In[724]:
 
 
-# computer gradient using sobel
+# compute gradient using sobel filter
 def get_gradient(img):
     print("\nget_gradient()")
     padding = 1
@@ -71,7 +77,7 @@ def get_gradient(img):
     return (Ix, Iy)
 
 
-# In[270]:
+# In[725]:
 
 
 # compute magnitude and angle of given gradients
@@ -93,28 +99,30 @@ def get_arrows(Ix, Iy):
     return sub_matrix
 
 
-# In[470]:
+# In[726]:
 
 
 # detect key points using openCV FAST or SURF
 # Limit # of detected Kepoints <= 100
-def get_kp( img, Suppress = False, Value = 0):
+# Opencv FAST documentation: https://docs.opencv.org/master/df/d0c/tutorial_py_fast.html
+def get_kp( img, Suppress=False, Threshold=100):
     print("\nget_kp()")
     print(type(img))
     print(img.shape)
 
     # Initiate FAST object with default values
+    # documentation found: https://docs.opencv.org/3.4.9/df/d74/classcv_1_1FastFeatureDetector.html
     fast = cv.FastFeatureDetector_create()
     fast.setThreshold(100)
     
     # Disable nonmaxSuppression
     if (Suppress == False):
-        fast.setNonmaxSuppression(Value)
+        fast.setNonmaxSuppression(0)
     
     # find and draw the keypoints
     kp = fast.detect(img,None)
     # KP structure documentation: https://docs.opencv.org/master/d2/d29/classcv_1_1KeyPoint.html
-    
+
     kp_img = cv.drawKeypoints(img, kp, None, color=(255,0,0))
     
     # Print all default params
@@ -129,30 +137,42 @@ def get_kp( img, Suppress = False, Value = 0):
     return (kp, kp_img)
 
 
-# In[519]:
+# In[727]:
 
 
-def draw_concat_kp(img, kp, kp_t, matches):
-    copy = img
+def draw_concat_kp(concat_img, kp, kp_t, matches, image_delta=concat_img.shape[1]/2):
+    # lines drawn on a copy of concatenated img
+    copy = concat_img
+
+    # sweep across vector of matches, plotting as we go
     for i in range(0, len(matches)):
-        if matches[i] != 0:
+        if matches[i] != -1:
+            # get start points (x1,y1) & endpoints (x2,y2)
             x1 = kp[i].pt[0]
-            x2 = kp_t[matches[i]].pt[0] + int(img.shape[1]/2)
+            x2 = kp_t[matches[i]].pt[0] + int(image_delta) # horizontal concat requires shift
             y1 = kp[i].pt[1]
             y2 = kp_t[matches[i]].pt[1]
-            copy = cv.line(copy, (int(x1),int(y1)), (int(x2),int(y2)), (np.random.randint(0,255),np.random.randint(0,255),np.random.randint(0,255)) , 2)
-
+            # generate line segment colors
+            R = np.random.randint(0,255)
+            G = np.random.randint(0,255)
+            B = np.random.randint(0,255)
+            # segment thickness
+            THICC = 1
+            copy = cv.line(copy, (int(x1),int(y1)), (int(x2),int(y2)), (R, G, B) , THICC)
+    
+    # now plot
     show_grayscale(copy)
 
 
-# In[508]:
+# In[728]:
 
 
 # Gets 5x5 window extraction around a given keypoint data structure
 def get_5x5_window( image, this_kp, padding = 0):
     #print("get_5x5_window()")
+    
     padded_img = np.pad(image, padding)
-    fd_window = np.zeros((5,5))
+    fd_window  = np.zeros((5,5))
     
     (x, y) = this_kp.pt
     #print(this_kp.pt)
@@ -169,12 +189,12 @@ def get_5x5_window( image, this_kp, padding = 0):
     return fd_window
 
 
-# In[509]:
+# In[729]:
 
 
 # returns vector of 5x5 windows for a given image
 def get_fdvector_5x5(img, kp_list):
-    print("\nget_fdvector_5x5()")
+    #print("\nget_fdvector_5x5()")
     fd_vector = []
     
     for kp in kp_list:
@@ -187,11 +207,13 @@ def get_fdvector_5x5(img, kp_list):
     return fd_vector
 
 
-# In[510]:
+# In[730]:
 
 
+# returns vector of element-wise difference between a n-dimensional window matrix
+# and a vector of n dimentional matrices 
 def get_differences(fd_window, fd_vector):
-    print("\nget_differences()")
+    #print("\nget_differences()")
     diff_vector = []
     
     for fd in fd_vector:
@@ -200,61 +222,63 @@ def get_differences(fd_window, fd_vector):
     # creates 3D matrix of fd windows
     diff_vector = np.stack(diff_vector, axis=0)
     
-    print(diff_vector.shape)
+    #print(diff_vector.shape)
     return diff_vector
 
 
-# In[511]:
+# In[731]:
 
 
+# Returns vector of euclidean distances given a vector of n-dimensional matrices
 def get_euclidean_distances(matrix_vector):
-    print("\nget_euclidean_distance()")
+    # print("\nget_euclidean_distance()")
     (y,x) = matrix_vector[0].shape
     euclidean_vector = []
     
     for matrix in matrix_vector:
         euclidean_vector.append(np.square(np.sum(np.square(matrix))))
 
+    # creates np array of euclidean distances
     euclidean_vector = np.stack(euclidean_vector, axis=0)
                                 
-    print(euclidean_vector.shape)
+    #print(euclidean_vector.shape)
     return euclidean_vector
 
 
-# In[512]:
+# In[732]:
 
 
+# returns value of matching euclidean distance if ratio is satisfied, else -1
 def get_matching_fd( distances, ratio_threshold):
-    # Set Up
-    print("\nget_matching_fd()")
-    copy = distances
+    #print("\nget_matching_fd()")
     #print("size:\t",copy.shape)
+    
+    if len(distances) < 2:
+        return -1
+    
+    copy = distances
+    
     min1  = np.amin(copy)
-    copy = copy[copy != min1]
-    #print("size:\t",copy.shape)    
+    copy  = copy[copy != min1]
+    #print("size:\t",copy.shape)
+    
     min2 = np.amin(copy)
     copy = copy[copy != min2]
+    
     #print("size:\t",copy.shape)
     ratio = min1/min2
     
-    while(len(copy) > 1):
-        #print("size:\t",copy.shape)
-        if( ratio < ratio_threshold):
-            return min1
-        else:
-            min1 = min2
-            min2 = np.amin(copy)
-            ratio = min1/min2
-            copy = copy[copy != min2]
-        
-    # -1 marks a failure, kp should be removed by user
-    return -1
+    if( ratio < ratio_threshold):
+        return min1    
+    else:
+        # -1 marks a failure, kp should be removed by user
+        return -1
 
 
-# In[513]:
+# In[733]:
 
 
-# returns index of most likely match to keypoint kp in kp_list
+# returns index of most likely match to keypoint kp in kp_liss given their respective fds
 def get_matching_kp_index(fd_window, fd_vector):
     # Compute distance matrices
     differences = get_differences(fd_window, fd_vector)
@@ -263,24 +287,36 @@ def get_matching_kp_index(fd_window, fd_vector):
     return matching_kp
 
 
-# In[514]:
+# In[737]:
 
+
+# scale factor %
+scale = 25
 
 # image is a 2D numpy.ndarray
-img = np.array(Image.open( 'House.png').convert('L'))
+#img = np.array(Image.open( '../wall1.ppm').convert('L'))
+#img = np.array(Image.open( '../cars1.ppm').convert('L'))
+img = np.array(Image.open( '../bikes1.ppm').convert('L'))
+#img = np.array(Image.open( 'House.png').convert('L'))
 #img = np.array(Image.open( 'Square.png').convert('L'))
 
-img = scale_img(img, 25)
-kp, img_kp  = get_kp(img, Suppress=True, Value = 0)
+# scale image to some % of original
+img = scale_img(img, scale)
 
-img_t = np.array(Image.open( 'House_translation.png').convert('L'))
+#img_t = np.array(Image.open( '../wall2.ppm').convert('L'))
+#img_t = np.array(Image.open( '../cars2.ppm').convert('L'))
+img_t = np.array(Image.open( '../bikes2.ppm').convert('L'))
+#img_t = np.array(Image.open( 'House_translation.png').convert('L'))
 #img_t = np.array(Image.open( 'Square_translation.png').convert('L'))
 
-img_t = scale_img(img_t, 25)
-kp_t, img_kp_t  = get_kp(img_t, Suppress=True, Value = 0)
+img_t = scale_img(img_t, scale)
+
+# get key points using open cv FAST
+kp, img_kp  = get_kp(img, Suppress=True, Threshold=150)
+kp_t, img_kp_t  = get_kp(img_t, Suppress=True, Threshold=150)
 
 
-# In[515]:
+# In[738]:
 
 
 # Get Feature Descriptor 5 X 5
@@ -297,41 +333,40 @@ fd_vector_t = get_fdvector_5x5(img_t, kp_t)
 print("length of fd vector translated: ",len(fd_vector_t))
 
 
-# In[516]:
+# In[739]:
 
 
 # compute matching 5x5
 
 matches = []
 # sweep between original and translated image fd vectors
-# example, finding most likely point for the first kp in the original image
 for fd in fd_vector:
     differences = get_differences(fd, fd_vector_t)
     distances   = get_euclidean_distances(differences)
-    
     # get matching point
-    match = get_matching_fd( distances, ratio_threshold= 0.9)
-    print(match)
+    match = get_matching_fd( distances, ratio_threshold=.9)
+    # print(match)
     # get index of matching point
     index = np.where(distances==match)[0][0]
-    print(index)
+    #print(index)
     matches.append(index)
 
 
-# In[520]:
+# In[741]:
 
 
 # our indexes for matching kps in the translated image.
+#print(distances)
 print(matches)
 
 #horizontal concatenation
 concat_img = concat_horiz(img_kp, img_kp_t)
 
 # draw kps on concat image
-draw_concat_kp(concat_img, kp, kp_t, matches)
+draw_concat_kp(concat_img, kp, kp_t, matches, image_delta=img.shape[1])
 
 
-# In[518]:
+# In[742]:
 
 
 # compute matching 16x16
@@ -345,15 +380,9 @@ sub_matrix = get_arrows(Ix, Iy)
         #print(sub_matrix[j,i])
 
 
-# In[228]:
+# In[743]:
 
 
 # Implement SIFT like feature descriptor
 # no orientation normalization if no rotation is involved
-
-
-# In[ ]:
-
-
-
 
